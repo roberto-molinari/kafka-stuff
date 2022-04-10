@@ -1,0 +1,66 @@
+---
+
+version: '3'
+
+services:
+
+  zookeeper:
+
+    image: confluentinc/cp-zookeeper:6.2.0
+    container_name: zookeeper
+
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+
+
+  broker:
+
+    image: confluentinc/cp-kafka:6.2.0
+    container_name: broker
+    ports:
+
+    # To learn about configuring Kafka for access across networks see
+
+    # https://www.confluent.io/blog/kafka-client-cannot-connect-to-broker-on-aws-on-docker-etc/
+      - "9092:9092"
+    # this is needed to enable processes running on the host to access the broker running in a container
+      - "19092:19092"
+
+    depends_on:
+      - zookeeper
+
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT,CONNECTIONS_FROM_HOST:PLAINTEXT
+
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://$HOST_IP:9092,PLAINTEXT_INTERNAL://broker:29092
+
+      # the following line was the original.  This worked for clients on the host talking to the broker.  This doesn't work for ksql to connect, this article looks like it has interesting inf: https://rmoff.net/2018/08/02/kafka-listeners-explained/
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://broker:29092
+      # the CONNECTIONS_FROM_HOST setting is needed to enable processes running on the host (not in a container) to access brokers.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:9092,PLAINTEXT_INTERNAL://broker:29092, CONNECTIONS_FROM_HOST://localhost:19092
+
+      # the following two lines were added (to replace the above) to try and allow ksql running in a container to talk with the broker running in another container.  This did not work.
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092, PLAINTEXT://kafka:29092 
+      # KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092, PLAINTEXT://kafka:29092 
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+  ksql:
+    image: confluentinc/cp-ksql-server:5.4.2
+    container_name: ksql
+    ports:
+      - "8088:8088"
+
+    depends_on:
+      - broker
+
+    environment: 
+      KSQL_BOOTSTRAP_SERVERS: 'broker:9092'
+      KSQL_LISTENERS: http://0.0.0.0:8088
+      KSQL_KSQL_SERVICE_ID: ksql_server_2_
+      
